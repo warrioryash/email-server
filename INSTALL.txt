@@ -1,0 +1,247 @@
+Tested on Ubuntu 16.04
+
+           EMAIL SERVER
+
+INDEX
+   I.   DNS SETTINGS
+   II.  EMAIL USER ACCOUNTS
+   III. SSL CERTIFICATES
+   IV.  INSTALL SCRIPTS
+   V.   TESTING
+   VI.  iPhone Client
+   VII.  Backup/Restore Inbox
+
+I. DNS SETTINGS:
+   1. In your DNS settings for your domain, add an A record for mail.yourdomain.com:
+         ; A Records
+         @	           600	   IN	   A	45.55.54.18
+         mail	           3600	   IN	   A	45.55.54.18
+
+   2. In your DNS settings, modify the MX record to point to mail.yourdomain.com:
+         ; MX Records
+         @	           3600	   IN	   MX	0	@
+
+   3. In your DNS settings, add a TXT record (Host should point to @ and "Value"
+      should be: v=spf1 a ptr mx:yourdomain.com -all):
+         ; TXT Records
+         @                 3600	   IN	   TXT	"v=spf1 a ptr mx:yourdomain.com -all"
+
+II. EMAIL USER ACCOUNTS
+   1. First install (apt-get install dovecot-core) on your local machine.
+      Then generate encrypted passwords for your users using this command: 
+         doveadm pw -s MD5-CRYPT
+
+   2. Add these passwords to the email-server.sh file in the CONFIGURATION SECTION
+
+
+III. SSL CERTIFICATES
+   1. Follow instructions in the generate-ssl-certificate.sh to create
+      public/private keys. Now create three folders with these names:
+      1.1 CA CERTIFICATE
+      1.2 FINAL CERTIFICATE
+      1.3 PRIVATE KEY
+   2. Now move CA-dovecot.pem into the CA CERTIFICATE folder
+
+   3. If you followed instructions in  generate-ssl-certificate.sh then you would
+      have placed one .pem file in the folders FINAL CERTIFICATE and PRIVATE KEY
+
+
+IV.  INSTALL
+   1. Edit the "CONFIGURATION" section of install.sh and email-server.sh
+
+   2. Make install.sh executable:
+         sudo chmod ug+wrx install.sh
+
+   3. Run install.sh
+         sudo ./install.sh
+
+   4. On the server, open the following ports (if required, install ufw, apt-get install ufw):
+      sudo ufw allow 25
+      sudo ufw allow 993
+      sudo ufw allow 995
+
+
+----------------------------------DONE----------------------------------------------
+
+
+V. TESTING
+   1. Run nmap to see which ports are open:
+       nmap IPADDRESS
+
+         Starting Nmap 7.01 ( https://nmap.org ) at 2016-07-05 19:02 EDT
+         Nmap scan report for yash.ws (10.236.2.14)
+         Host is up (0.016s latency).
+         Not shown: 994 closed ports
+         PORT     STATE    SERVICE
+         22/tcp   open     ssh
+         25/tcp   filtered smtp
+         110/tcp  open     pop3
+         143/tcp  open     imap
+         554/tcp  open     rtsp
+         7070/tcp open     realserver
+
+   2. A "filtered" port means that the port is blocked. Open the port:
+         sudo ufw allow 25
+
+   3. Now lets test smtp for TLS using telnet:
+
+    $ telnet YOURDOMAIN.COM 25
+
+       You should get a banner similar to this:
+
+          Trying 127.0.0.1...
+          Connected to YOURDOMAIN.COM.
+          Escape character is '^]'.
+          220 YOURDOMAIN.COM NO UCE ESMTP 
+   4. Now issue a EHLO command:
+
+         EHLO test.com 
+
+      You should not see something like the output below:
+
+         250-mail.example.org
+         250-PIPELINING
+         250-SIZE 52428800
+         250-ETRN
+         250-STARTTLS
+         250-AUTH PLAIN LOGIN
+         250-AUTH=PLAIN LOGIN
+         250-ENHANCEDSTATUSCODES
+         250-8BITMIME
+         250 DSN
+
+      Now, issue the STARTTLS command
+
+         STARTTLS 
+      
+      If you see the following then communication over port 25 works:
+
+         220 2.0.0 Ready to start TLS
+
+   5. On the server, run this command to see which ports are being held by Dovecot and Postfix
+
+         netstat -ltnp
+
+      The output MUST be something like this:
+
+         root@yash:~# netstat -ltnp
+         Active Internet connections (only servers)
+         Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
+         tcp        0      0 0.0.0.0:110             0.0.0.0:*               LISTEN      1287/dovecot    
+         tcp        0      0 0.0.0.0:143             0.0.0.0:*               LISTEN      1287/dovecot  
+         tcp        0      0 0.0.0.0:465             0.0.0.0:*               LISTEN      1550/master    
+         tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      1350/sshd       
+         tcp        0      0 0.0.0.0:25              0.0.0.0:*               LISTEN      1557/master     
+         tcp        0      0 0.0.0.0:993             0.0.0.0:*               LISTEN      1287/dovecot    
+         tcp        0      0 0.0.0.0:995             0.0.0.0:*               LISTEN      1287/dovecot    
+         tcp6       0      0 :::110                  :::*                    LISTEN      1287/dovecot    
+         tcp6       0      0 :::143                  :::*                    LISTEN      1287/dovecot    
+         tcp6       0      0 :::22                   :::*                    LISTEN      1350/sshd       
+         tcp6       0      0 :::25                   :::*                    LISTEN      1557/master 
+         tcp6       0      0 :::465                  :::*                    LISTEN      1550/master      
+         tcp6       0      0 :::993                  :::*                    LISTEN      1287/dovecot    
+         tcp6       0      0 :::995                  :::*                    LISTEN      1287/dovecot 
+
+      If not then some of the services are not starting. You will have to check the 
+      configuration files, line by line. Refer to this tutorial: http://www.binarytides.com/install-postfix-dovecot-debian/
+
+   6. LAST TEST: Run this command from your local machine:
+         openssl s_client -connect IPADDRESSOFYOURSERVER:995
+
+      SAMPLE OUTPUT: 
+      openssl s_client -connect 104.236.20.124:995
+      CONNECTED(00000003)
+      depth=2 C = IL, O = StartCom Ltd., OU = Secure Digital Certificate Signing, CN = StartCom Certification Authority
+      verify return:1
+      depth=1 C = IL, O = StartCom Ltd., OU = Secure Digital Certificate Signing, CN = StartCom Class 1 Primary Intermediate Server CA
+      verify return:1
+      depth=0 C = US, CN = www.yash.ws, emailAddress = yashkirat@gmail.com
+      verify return:1
+      ---
+      Certificate chain
+         0 s:/C=US/CN=www.yash.ws/emailAddress=yashkirat@gmail.com
+         i:/C=IL/O=StartCom Ltd./OU=Secure Digital Certificate Signing/CN=StartCom Class 1 Primary Intermediate Server CA
+         1 s:/C=IL/O=StartCom Ltd./OU=Secure Digital Certificate Signing/CN=StartCom Class 1 Primary Intermediate Server CA
+         i:/C=IL/O=StartCom Ltd./OU=Secure Digital Certificate Signing/CN=StartCom Certification Authority
+         2 s:/C=IL/O=StartCom Ltd./OU=Secure Digital Certificate Signing/CN=StartCom Certification Authority
+         i:/C=IL/O=StartCom Ltd./OU=Secure Digital Certificate Signing/CN=StartCom Certification Authority
+       ---
+
+       .
+       .
+       .
+          Protocol  : TLSv1.2
+       Cipher    : ECDHE-RSA-AES256-GCM-SHA384
+       Session-ID: F1BA226198A08400282328FF5563066968D9258ACA01F3E7F0E214D07BE87381
+       Session-ID-ctx: 
+       Master-Key: B040300EC77326EFA572187AACCEC9496556238C29BFC8AEDC735D6A08936AE07D9EBDE7A17E267C3FA7CA03701E41A6
+       Key-Arg   : None
+       PSK identity: None
+       PSK identity hint: None
+       SRP username: None
+       TLS session ticket lifetime hint: 300 (seconds)
+       TLS session ticket:
+       0000 - 26 13 2f 61 0e 48 e1 63-6b bf bb 4c 6c ac d3 5c   &./a.H.ck..Ll..\
+       0010 - 1a 38 9f 26 64 52 80 0f-d8 80 70 7d 5b 9c a0 16   .8.&dR....p}[...
+       0020 - 75 01 3e 29 15 47 a2 58-fc fc d6 ec a8 69 30 7d   u.>).G.X.....i0}
+       0030 - 18 78 56 04 b0 7c d8 d7-f9 90 cb f9 da 7f 4e 27   .xV..|........N'
+       0040 - 33 9b 77 96 8a 02 cd 18-93 8f c5 6d 3a f5 c1 33   3.w........m:..3
+       0050 - 5a 46 86 8f e0 a0 2d e9-7a 9f fd 58 ca 95 8a 28   ZF....-.z..X...(
+       0060 - cc a1 8e f7 b8 aa 29 2f-1e b8 36 d3 5b c5 fb 5d   ......)/..6.[..]
+       0070 - 0b 1f ad e9 a9 3c bd 9d-cc 27 98 71 6e ed 0c c1   .....<...'.qn...
+       0080 - 88 97 63 5d 98 5f 47 de-23 83 4c 23 a8 4b 7a 16   ..c]._G.#.L#.Kz.
+       0090 - 97 5e 03 83 ad 4c 5c 4f-4e dc 7b 69 40 ad f9 19   .^...L\ON.{i@...
+
+       Start Time: 1445450970
+       Timeout   : 300 (sec)
+       Verify return code: 18 (self signed certificate)
+       ---
+       +OK Dovecot (Ubuntu) ready.
+
+
+   7. TEST your MX record settings here: http://mxtoolbox.com/ You should see something like this:
+
+      Pref	Hostname	IP Address	TTL	
+      0	        smtp.yash.ws	104.236.20.124	60 min	Blacklist Check      SMTP Test
+      10	mail.yash.ws	104.236.20.124	60 min	Blacklist Check      SMTP Test
+
+   8. Click on the SMTP Test link to test your mail server 
+
+
+VI. iPhone Client
+   1. When you try to configure an email account to connect to your email server, the iPhone 
+      will say that it cannot connect using SSL. Here's the solution:
+
+         Tap No, you do not want to try setting up the account without SSL, and then tap Save. 
+         Tap the email account you just attempted to set up, and then scroll down to tap SMTP.
+         Tap OFF to turn the SSL setting on (if it is not already on), and then tap Server Port 
+         to change it to 465. Tap AT&T SMTP Server and then tap OFF to turn the server on.
+
+VII.  Backup/Restore Inbox
+
+   1. Configure restore-inbox.sh and backup-inbox.sh, that is, add your domain name and you IP 
+      address. Use these short scripts to backup and restore the inboxes on your mail server.
+
+   2. To backup inbox: 
+         chmod ug+wrx backup-inbox.sh
+         ./backup-inbox.sh
+
+   3. To restore inbox:
+         chmod ug+wrx backup-inbox.sh
+         ./restore-inbox.sh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
