@@ -9,4 +9,6 @@
  *  3. Easily backup and restore inboxes
  *     
  *  4. Access emails from mobile devices
+ *     
+ *  5. See INSTALL.txt for installation and testing instructions
  */
